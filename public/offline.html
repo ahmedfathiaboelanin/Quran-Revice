@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b3d2e" />
+    <title>ورد الحفظ — أنت غير متصل</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --emerald: #0b3d2e;
+        --gold: #c9a227;
+        --cream: #f8f5ee;
+        --ink: #1c2b24;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        min-height: 100dvh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background:
+          radial-gradient(circle at 15% 15%, rgba(201, 162, 39, 0.13), transparent 32%),
+          radial-gradient(circle at 85% 85%, rgba(11, 61, 46, 0.09), transparent 36%),
+          var(--cream);
+        color: var(--ink);
+        font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+        text-align: center;
+      }
+      main {
+        width: min(440px, 100%);
+        padding: 40px 28px;
+        border: 1px solid rgba(11, 61, 46, 0.1);
+        border-radius: 28px;
+        background: rgba(255, 255, 255, 0.75);
+        box-shadow: 0 24px 70px rgba(11, 61, 46, 0.12);
+        backdrop-filter: blur(14px);
+      }
+      .seal {
+        width: 74px;
+        height: 74px;
+        margin: 0 auto 20px;
+        display: grid;
+        place-items: center;
+        border-radius: 22px;
+        background: linear-gradient(145deg, #0b3d2e, #115741);
+        color: #f7e7a6;
+        font-size: 34px;
+        box-shadow: 0 12px 30px rgba(11, 61, 46, 0.24);
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 26px;
+        line-height: 1.4;
+      }
+      p {
+        margin: 0 0 24px;
+        color: #52635a;
+        line-height: 1.9;
+        font-size: 15px;
+      }
+      button {
+        width: 100%;
+        border: 0;
+        border-radius: 16px;
+        padding: 14px 20px;
+        background: var(--emerald);
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #115741;
+      }
+      small {
+        display: block;
+        margin-top: 16px;
+        color: #78877f;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="seal" aria-hidden="true">۞</div>
+      <h1>لا يوجد اتصال بالإنترنت</h1>
+      <p>افتح التطبيق مرة واحدة وأنت متصل حتى تُحفظ بيانات القرآن على جهازك، ثم يمكنك المراجعة دون اتصال.</p>
+      <button type="button" onclick="location.reload()">إعادة المحاولة</button>
+      <small>ورد الحفظ — مراجعة القرآن الكريم</small>
+    </main>
+  </body>
+</html>
