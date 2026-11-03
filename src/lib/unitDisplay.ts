@@ -1,4 +1,5 @@
 import type { MemorizationUnit, UnitCategory, UnitType } from "./types";
+import { strengthProfiles } from "./strength";
 import { formatArabicNumber, formatDayCount, normalizeArabic } from "./utils";
 
 export const unitTypeLabels: Record<UnitType, string> = {
@@ -51,7 +52,13 @@ export function matchesSearch(unit: MemorizationUnit, query: string): boolean {
   if (!normalizedQuery) return true;
 
   const haystack = normalizeArabic(
-    [unit.title, describeUnit(unit), unitTypeLabels[unit.type], categoryLabels[unit.category]].join(" "),
+    [
+      unit.title,
+      describeUnit(unit),
+      unitTypeLabels[unit.type],
+      categoryLabels[unit.category],
+      strengthProfiles[unit.strength].label,
+    ].join(" "),
   );
 
   return normalizedQuery.split(" ").every((token) => haystack.includes(token));

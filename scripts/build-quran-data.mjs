@@ -34,6 +34,7 @@ async function main() {
   await mkdir(outputPagesDir, { recursive: true });
 
   const pages = new Map();
+  const juzPortions = new Map();
   const normalizedSurahs = [];
   let totalAyahs = 0;
 
@@ -78,6 +79,11 @@ async function main() {
       ayahs,
     };
 
+    const surahPages = [...new Set(ayahs.map((ayah) => ayah.page))].sort((a, b) => a - b);
+    const surahJuzs = [...new Set(ayahs.map((ayah) => ayah.juz))].sort((a, b) => a - b);
+    const juzStart = surahJuzs[0];
+    const juzEnd = surahJuzs[surahJuzs.length - 1];
+
     normalizedSurahs.push({
       number: surah.number,
       name: surah.name,
@@ -85,9 +91,67 @@ async function main() {
       englishNameTranslation: surah.englishNameTranslation,
       revelationType: surah.revelationType,
       numberOfAyahs: surah.numberOfAyahs,
+      juzStart,
+      juzEnd,
+      startPage: surahPages[0],
+      endPage: surahPages[surahPages.length - 1],
+      pageCount: surahPages.length,
     });
 
     totalAyahs += ayahs.length;
+
+    // تجميع آيات السورة في أجزاء دقيقة. السورة قد تمتد على أكثر من جزء،
+    // لذلك نحفظ لكل جزء نطاق الآيات والصفحات الخاص به.
+    let currentPortion = null;
+    const flushPortion = () => {
+      if (!currentPortion) return;
+      const portionPages = [...currentPortion.pages].sort((a, b) => a - b);
+      const portion = {
+        juz: currentPortion.juz,
+        surah: {
+          number: surah.number,
+          name: surah.name,
+          englishName: surah.englishName,
+          numberOfAyahs: surah.numberOfAyahs,
+        },
+        startAyah: currentPortion.startAyah,
+        endAyah: currentPortion.endAyah,
+        ayahCount: currentPortion.endAyah - currentPortion.startAyah + 1,
+        startPage: portionPages[0],
+        endPage: portionPages[portionPages.length - 1],
+        pageCount: portionPages.length,
+      };
+
+      if (!juzPortions.has(portion.juz)) {
+        juzPortions.set(portion.juz, []);
+      }
+      juzPortions.get(portion.juz).push(portion);
+      currentPortion = null;
+    };
+
+    for (const ayah of ayahs) {
+      if (
+        !Number.isInteger(ayah.juz) ||
+        ayah.juz < 1 ||
+        ayah.juz > 30
+      ) {
+        throw new Error(`رقم جزء غير صالح في السورة ${meta.number}: ${ayah.juz}`);
+      }
+
+      if (!currentPortion || currentPortion.juz !== ayah.juz) {
+        flushPortion();
+        currentPortion = {
+          juz: ayah.juz,
+          startAyah: ayah.numberInSurah,
+          endAyah: ayah.numberInSurah,
+          pages: new Set([ayah.page]),
+        };
+      } else {
+        currentPortion.endAyah = ayah.numberInSurah;
+        currentPortion.pages.add(ayah.page);
+      }
+    }
+    flushPortion();
 
     for (const ayah of ayahs) {
       if (ayah.page < 1 || ayah.page > TOTAL_PAGES) {
@@ -145,16 +209,33 @@ async function main() {
   }
 
   await writeJson(path.join(outputRoot, "surahs.json"), normalizedSurahs);
+
+  const juzs = Array.from({ length: 30 }, (_, index) => {
+    const number = index + 1;
+    const portions = (juzPortions.get(number) ?? []).sort(
+      (first, second) =>
+        first.surah.number - second.surah.number || first.startAyah - second.startAyah,
+    );
+
+    if (portions.length === 0) {
+      throw new Error(`الجزء ${number} لا يحتوي على أي آيات.`);
+    }
+
+    return { number, portions };
+  });
+
+  await writeJson(path.join(outputRoot, "juzs.json"), juzs);
   await writeJson(path.join(outputRoot, "meta.json"), {
     totalSurahs: normalizedSurahs.length,
     totalAyahs,
     totalPages: TOTAL_PAGES,
+    totalJuzs: juzs.length,
     pagesWithAyahs: pages.size,
     source: "quran/surahs/*.json",
   });
 
   console.log(
-    `✓ تم تجهيز ${normalizedSurahs.length} سورة، و${totalAyahs} آية، و${TOTAL_PAGES} صفحة في public/quran`,
+    `✓ تم تجهيز ${normalizedSurahs.length} سورة، و${totalAyahs} آية، و${TOTAL_PAGES} صفحة و${juzs.length} جزءاً في public/quran`,
   );
 }
 

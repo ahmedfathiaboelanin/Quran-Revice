@@ -5,7 +5,7 @@
  * - ملفات البناء والأيقونات: الكاش أولاً.
  */
 
-const VERSION = "quran-revise-v1";
+const VERSION = "quran-revise-v2";
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-quran`;
 const ASSET_CACHE = `${VERSION}-assets`;
@@ -18,6 +18,7 @@ const SHELL_URLS = [
   "/icons/icon-512.png",
   "/icons/apple-touch-icon.png",
   "/quran/surahs.json",
+  "/quran/juzs.json",
   "/quran/meta.json",
 ];
 

@@ -6,13 +6,12 @@ import {
   Layers,
   ListOrdered,
   Play,
-  ShieldAlert,
-  Sparkles,
   Trash2,
 } from "lucide-react";
 import { getStrength, isDue } from "@/lib/srsAlgorithm";
+import { strengthProfiles } from "@/lib/strength";
 import type { MemorizationUnit } from "@/lib/types";
-import { categoryLabels, describeUnit, intervalSummary, unitTypeLabels } from "@/lib/unitDisplay";
+import { describeUnit, intervalSummary, unitTypeLabels } from "@/lib/unitDisplay";
 import { cn, formatDueLabel } from "@/lib/utils";
 
 interface UnitCardProps {
@@ -55,8 +54,8 @@ export function UnitCard({ unit, now, onReview, onDelete }: UnitCardProps) {
   const TypeIcon = typeIcons[unit.type];
   const strength = getStrength(unit);
   const strengthStyle = strengthStyles[strength.tone];
+  const profile = strengthProfiles[unit.strength];
   const due = isDue(unit, now);
-  const isNewCategory = unit.category === "new";
 
   return (
     <article
@@ -88,18 +87,12 @@ export function UnitCard({ unit, now, onReview, onDelete }: UnitCardProps) {
             </h3>
             <span
               className={cn(
-                "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold",
-                isNewCategory
-                  ? "border-brand-100 bg-brand-50 text-brand-800"
-                  : "border-gold-200 bg-gold-100 text-gold-700",
+                "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold shadow-sm",
+                profile.badgeClass,
               )}
             >
-              {isNewCategory ? (
-                <Sparkles className="h-3 w-3" />
-              ) : (
-                <ShieldAlert className="h-3 w-3" />
-              )}
-              {categoryLabels[unit.category]}
+              <span className="h-1.5 w-1.5 rounded-full bg-white/80" />
+              {profile.label}
             </span>
           </div>
           <p className="mt-1 line-clamp-1 text-xs font-semibold text-muted">{describeUnit(unit)}</p>
@@ -131,6 +124,9 @@ export function UnitCard({ unit, now, onReview, onDelete }: UnitCardProps) {
         </span>
         <span className="rounded-full border border-line bg-cream-100/80 px-2.5 py-1 text-muted">
           {unitTypeLabels[unit.type]}
+        </span>
+        <span className="rounded-full border border-line bg-cream-100/80 px-2.5 py-1 text-muted">
+          {unit.pageCount.toLocaleString("ar-EG")} صفحة
         </span>
         {unit.reviewCount > 0 ? (
           <span className="rounded-full border border-line bg-cream-100/80 px-2.5 py-1 text-muted">

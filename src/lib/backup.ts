@@ -1,17 +1,28 @@
 import { MAX_EASE_FACTOR, MIN_EASE_FACTOR } from "./srsAlgorithm";
-import type { MemorizationUnit, ReviewQuality, UnitCategory, UnitReference, UnitType } from "./types";
+import { inferStrengthFromLegacy } from "./strength";
+import type {
+  MemorizationUnit,
+  ReviewQuality,
+  UnitCategory,
+  UnitReference,
+  UnitType,
+  WirdSettings,
+} from "./types";
+import { normalizeWirdSettings } from "./wirdPlanner";
 import { clamp, createId, isValidDate } from "./utils";
 
 interface BackupPayload {
   app: "quran-revise";
-  version: 1;
+  version: 2;
   exportedAt: string;
   units: MemorizationUnit[];
+  settings?: WirdSettings;
 }
 
 export interface ParsedBackup {
   units: MemorizationUnit[];
   skipped: number;
+  settings?: WirdSettings;
 }
 
 const VALID_TYPES: UnitType[] = ["surah", "ayah_range", "page"];
@@ -65,7 +76,7 @@ function fallbackTitle(type: UnitType, reference: UnitReference): string {
   return `الصفحات ${reference.startPage}–${reference.endPage}`;
 }
 
-function normalizeUnit(raw: unknown, index: number): MemorizationUnit | null {
+export function normalizeUnit(raw: unknown, index = 0): MemorizationUnit | null {
   if (!raw || typeof raw !== "object") return null;
   const item = raw as Record<string, unknown>;
   const type = VALID_TYPES.includes(item.type as UnitType) ? (item.type as UnitType) : null;
@@ -85,6 +96,18 @@ function normalizeUnit(raw: unknown, index: number): MemorizationUnit | null {
   const lastQuality = VALID_QUALITIES.includes(item.lastQuality as ReviewQuality)
     ? (item.lastQuality as ReviewQuality)
     : undefined;
+  const strength = inferStrengthFromLegacy({
+    strength: item.strength,
+    category,
+    easeFactor: toNumber(item.easeFactor, 2.5),
+    repetitions: toInteger(item.repetitions, 0, 0, 1000),
+    lastQuality,
+  });
+  const providedPageCount = toInteger(item.pageCount, 0, 0, 604);
+  const fallbackPageCount =
+    type === "page"
+      ? Math.max(1, (reference.endPage ?? reference.startPage ?? 1) - (reference.startPage ?? 1) + 1)
+      : 1;
 
   return {
     id:
@@ -95,6 +118,8 @@ function normalizeUnit(raw: unknown, index: number): MemorizationUnit | null {
     type,
     reference,
     category,
+    strength,
+    pageCount: providedPageCount > 0 ? providedPageCount : fallbackPageCount,
     ayahCount:
       item.ayahCount === undefined ? undefined : toInteger(item.ayahCount, 0, 0, 6236),
     interval: toInteger(item.interval, 0, 0, 3650),
@@ -111,12 +136,13 @@ function normalizeUnit(raw: unknown, index: number): MemorizationUnit | null {
   };
 }
 
-export function createBackupJson(units: MemorizationUnit[]): string {
+export function createBackupJson(units: MemorizationUnit[], settings?: WirdSettings): string {
   const payload: BackupPayload = {
     app: "quran-revise",
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     units,
+    settings,
   };
   return `${JSON.stringify(payload, null, 2)}\n`;
 }
@@ -158,12 +184,21 @@ export function parseBackup(text: string): ParsedBackup {
     throw new Error("لم يتم العثور على أي وحدات صالحة داخل الملف.");
   }
 
-  return { units, skipped };
+  const rawSettings =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as { settings?: unknown }).settings
+      : undefined;
+
+  return {
+    units,
+    skipped,
+    settings: rawSettings ? normalizeWirdSettings(rawSettings) : undefined,
+  };
 }
 
-export function downloadBackup(units: MemorizationUnit[]): string {
+export function downloadBackup(units: MemorizationUnit[], settings?: WirdSettings): string {
   const filename = `quran-revise-backup-${new Date().toISOString().slice(0, 10)}.json`;
-  const blob = new Blob([createBackupJson(units)], {
+  const blob = new Blob([createBackupJson(units, settings)], {
     type: "application/json;charset=utf-8",
   });
   const url = URL.createObjectURL(blob);

@@ -1,4 +1,10 @@
-import type { MemorizationUnit, NewUnitInput, ReviewQuality } from "./types";
+import type { MemorizationUnit, NewUnitInput, ReviewQuality, StrengthLevel } from "./types";
+import {
+  categoryForStrength,
+  deriveStrengthFromSchedule,
+  getStrengthScore,
+  strengthProfiles,
+} from "./strength";
 import { addDaysFromToday, clamp, createId } from "./utils";
 
 export const DEFAULT_EASE_FACTOR = 2.5;
@@ -102,10 +108,17 @@ export function applyGrade(
   now: Date = new Date(),
 ): MemorizationUnit {
   const schedule = calculateNextSchedule(unit, quality, now);
+  const strength = deriveStrengthFromSchedule(
+    schedule.easeFactor,
+    schedule.repetitions,
+    quality,
+  );
 
   return {
     ...unit,
     ...schedule,
+    strength,
+    category: categoryForStrength(strength),
     lastReviewed: now.toISOString(),
     reviewCount: unit.reviewCount + 1,
     lapseCount: unit.lapseCount + (quality === 1 ? 1 : 0),
@@ -114,21 +127,47 @@ export function applyGrade(
 }
 
 export function createUnit(input: NewUnitInput, now: Date = new Date()): MemorizationUnit {
+  const profile = strengthProfiles[input.strength];
+
   return {
     id: createId(),
     title: input.title,
     type: input.type,
     reference: input.reference,
-    category: input.category,
+    category: input.category ?? categoryForStrength(input.strength),
+    strength: input.strength,
+    pageCount: Math.max(1, Math.round(input.pageCount)),
     ayahCount: input.ayahCount,
-    interval: 0,
-    repetitions: 0,
-    easeFactor: DEFAULT_EASE_FACTOR,
-    nextReviewDate: now.toISOString(),
+    interval: profile.interval,
+    repetitions: profile.repetitions,
+    easeFactor: profile.easeFactor,
+    nextReviewDate: addDaysFromToday(profile.interval, now),
     lastReviewed: null,
     createdAt: now.toISOString(),
     reviewCount: 0,
     lapseCount: 0,
+  };
+}
+
+/**
+ * تحديث درجة الحفظ يدوياً من سجل المحفوظات.
+ * يعيد ضبط معايير SM-2 فوراً حتى يتغير موعد الاستحقاق تبعاً للدرجة الجديدة.
+ */
+export function updateUnitStrength(
+  unit: MemorizationUnit,
+  strength: StrengthLevel,
+  now: Date = new Date(),
+): MemorizationUnit {
+  const profile = strengthProfiles[strength];
+
+  return {
+    ...unit,
+    strength,
+    category: categoryForStrength(strength),
+    interval: profile.interval,
+    repetitions: profile.repetitions,
+    easeFactor: profile.easeFactor,
+    nextReviewDate: addDaysFromToday(profile.interval, now),
   };
 }
 
@@ -146,7 +185,7 @@ export function getDueUnits(units: MemorizationUnit[], now: Date = new Date()): 
 }
 
 export function isWeak(unit: MemorizationUnit): boolean {
-  return unit.category === "weak" || unit.easeFactor < 2.1 || unit.lapseCount >= 2;
+  return unit.strength === "weak" || unit.strength === "medium";
 }
 
 export interface StrengthInfo {
@@ -156,22 +195,17 @@ export interface StrengthInfo {
 }
 
 export function getStrength(unit: MemorizationUnit): StrengthInfo {
-  const easeRatio = clamp((unit.easeFactor - MIN_EASE_FACTOR) / (MAX_EASE_FACTOR - MIN_EASE_FACTOR), 0, 1);
-  const repetitionRatio = clamp(unit.repetitions / 5, 0, 1);
-  const lapsePenalty = Math.min(unit.lapseCount * 14, 42);
-  const categoryPenalty = unit.category === "weak" ? 6 : 0;
-  const score = Math.round(
-    clamp(18 + easeRatio * 42 + repetitionRatio * 40 - lapsePenalty - categoryPenalty, 5, 100),
-  );
+  const profile = strengthProfiles[unit.strength];
+  const toneByStrength: Record<StrengthLevel, StrengthInfo["tone"]> = {
+    weak: "danger",
+    medium: "warning",
+    good: "good",
+    strong: "strong",
+  };
 
-  if (score < 40) {
-    return { score, label: "ضعيف", tone: "danger" };
-  }
-  if (score < 60) {
-    return { score, label: "يحتاج تثبيت", tone: "warning" };
-  }
-  if (score < 80) {
-    return { score, label: "جيد", tone: "good" };
-  }
-  return { score, label: "متقن", tone: "strong" };
+  return {
+    score: getStrengthScore(unit.strength),
+    label: profile.label,
+    tone: toneByStrength[unit.strength],
+  };
 }

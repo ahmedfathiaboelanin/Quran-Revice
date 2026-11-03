@@ -19,9 +19,10 @@ import {
 } from "lucide-react";
 import { getReviewContent } from "@/lib/quranApi";
 import { previewInterval } from "@/lib/srsAlgorithm";
+import { strengthProfiles } from "@/lib/strength";
 import { useQuranStore } from "@/lib/store";
 import type { ReviewContent, ReviewQuality } from "@/lib/types";
-import { categoryLabels, describeUnit, unitTypeLabels } from "@/lib/unitDisplay";
+import { describeUnit, unitTypeLabels } from "@/lib/unitDisplay";
 import { cn, formatInterval, toArabicDigits } from "@/lib/utils";
 
 interface ReviewSessionProps {
@@ -252,8 +253,13 @@ export function ReviewSession({ unitIds, onExit }: ReviewSessionProps) {
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="rounded-full border border-gold-200 bg-gold-100 px-2 py-0.5 text-[10px] font-bold text-gold-700">
-                      {categoryLabels[currentUnit.category]}
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-[10px] font-bold shadow-sm",
+                        strengthProfiles[currentUnit.strength].badgeClass,
+                      )}
+                    >
+                      {strengthProfiles[currentUnit.strength].label}
                     </span>
                     <span className="rounded-full border border-line bg-white/70 px-2 py-0.5 text-[10px] font-bold text-muted">
                       {unitTypeLabels[currentUnit.type]}

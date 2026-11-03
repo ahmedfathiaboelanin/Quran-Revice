@@ -10,14 +10,14 @@ import {
   Loader2,
   Plus,
   RefreshCw,
-  ShieldAlert,
-  Sparkles,
 } from "lucide-react";
 import { useSurahs } from "@/hooks/useSurahs";
+import { getAyahRangePageCount } from "@/lib/quranApi";
 import { useQuranStore } from "@/lib/store";
-import type { MemorizationUnit, UnitCategory, UnitReference, UnitType } from "@/lib/types";
+import { strengthLevels, strengthProfiles } from "@/lib/strength";
+import type { MemorizationUnit, StrengthLevel, UnitReference, UnitType } from "@/lib/types";
 import { referenceIdentity, unitTypeLabels } from "@/lib/unitDisplay";
-import { cn, toArabicDigits } from "@/lib/utils";
+import { cn, formatInterval, toArabicDigits } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 
 interface AddUnitModalProps {
@@ -43,7 +43,7 @@ export function AddUnitModal({ open, onClose, onAdded }: AddUnitModalProps) {
   const addUnit = useQuranStore((state) => state.addUnit);
 
   const [type, setType] = useState<UnitType>("surah");
-  const [category, setCategory] = useState<UnitCategory>("new");
+  const [strength, setStrength] = useState<StrengthLevel>("weak");
   const [surahNumber, setSurahNumber] = useState(1);
   const [startAyah, setStartAyah] = useState(1);
   const [endAyah, setEndAyah] = useState(7);
@@ -67,6 +67,7 @@ export function AddUnitModal({ open, onClose, onAdded }: AddUnitModalProps) {
   useEffect(() => {
     if (!open) return;
     setFormError(null);
+    setSubmitting(false);
   }, [open]);
 
   const handleSurahChange = (value: string) => {
@@ -94,8 +95,9 @@ export function AddUnitModal({ open, onClose, onAdded }: AddUnitModalProps) {
     return `الصفحات ${toArabicDigits(startPage)}–${toArabicDigits(endPage)}`;
   })();
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (submitting) return;
     setFormError(null);
 
     if (!selectedSurah && type !== "page") {
@@ -106,6 +108,7 @@ export function AddUnitModal({ open, onClose, onAdded }: AddUnitModalProps) {
     let reference: UnitReference;
     let title: string;
     let ayahCount: number | undefined;
+    let pageCount = 1;
 
     if (type === "surah" && selectedSurah) {
       reference = {
@@ -116,6 +119,7 @@ export function AddUnitModal({ open, onClose, onAdded }: AddUnitModalProps) {
       };
       title = selectedSurah.name;
       ayahCount = selectedSurah.numberOfAyahs;
+      pageCount = selectedSurah.pageCount;
     } else if (type === "ayah_range" && selectedSurah) {
       if (
         !Number.isInteger(startAyah) ||
@@ -153,6 +157,7 @@ export function AddUnitModal({ open, onClose, onAdded }: AddUnitModalProps) {
         startPage === endPage
           ? `صفحة ${toArabicDigits(startPage)}`
           : `الصفحات ${toArabicDigits(startPage)}–${toArabicDigits(endPage)}`;
+      pageCount = endPage - startPage + 1;
     }
 
     const duplicate = units.some(
@@ -165,8 +170,24 @@ export function AddUnitModal({ open, onClose, onAdded }: AddUnitModalProps) {
     }
 
     setSubmitting(true);
-    const unit = addUnit({ title, type, reference, category, ayahCount });
-    onAdded(unit);
+    try {
+      if (type === "ayah_range" && selectedSurah) {
+        pageCount = await getAyahRangePageCount(selectedSurah.number, startAyah, endAyah);
+      }
+
+      const unit = addUnit({
+        title,
+        type,
+        reference,
+        strength,
+        pageCount,
+        ayahCount,
+      });
+      onAdded(unit);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "تعذر إضافة الورد. حاول مرة أخرى.");
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -174,7 +195,7 @@ export function AddUnitModal({ open, onClose, onAdded }: AddUnitModalProps) {
       open={open}
       onClose={onClose}
       title="إضافة ورد حفظ أو مراجعة"
-      description="اختر نطاق الورد، وحدد حالته، وسيتولى التطبيق جدولة المراجعات بالتكرار المتباعد."
+      description="اختر نطاق الورد ودرجة حفظه الحالية، وسيبدأ التطبيق جدولة SM-2 من المعايير المناسبة لها فوراً."
       size="lg"
       footer={
         <div className="flex gap-3">
@@ -191,13 +212,13 @@ export function AddUnitModal({ open, onClose, onAdded }: AddUnitModalProps) {
             disabled={submitting || loading || Boolean(surahsError)}
             className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-900 px-4 py-3 text-sm font-extrabold text-white shadow-[0_8px_22px_rgba(11,61,46,0.18)] transition hover:bg-brand-800 disabled:opacity-50"
           >
-            <Plus className="h-4 w-4" />
-            إضافة الورد
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            {submitting ? "جارٍ الإضافة…" : "إضافة الورد"}
           </button>
         </div>
       }
     >
-      <form id="add-unit-form" onSubmit={handleSubmit} className="space-y-5">
+      <form id="add-unit-form" onSubmit={(event) => void handleSubmit(event)} className="space-y-5">
         {surahsError ? (
           <div className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
             <AlertCircle className="h-5 w-5 shrink-0" />
@@ -244,51 +265,53 @@ export function AddUnitModal({ open, onClose, onAdded }: AddUnitModalProps) {
         </section>
 
         <section>
-          <p className="mb-2 text-xs font-extrabold text-brand-950">حالة الورد</p>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-extrabold text-brand-950">درجة الحفظ الحالية</p>
+            <span className="text-[9px] font-semibold text-muted">تُضبط معايير SM-2 تلقائياً</span>
+          </div>
           <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              aria-pressed={category === "new"}
-              onClick={() => setCategory("new")}
-              className={cn(
-                "flex items-start gap-2.5 rounded-2xl border p-3 text-right transition",
-                category === "new"
-                  ? "border-brand-600 bg-brand-50 shadow-[0_0_0_3px_rgba(31,132,100,0.08)]"
-                  : "border-line bg-white hover:border-brand-100",
-              )}
-            >
-              <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-brand-100 text-brand-800">
-                <Sparkles className="h-4 w-4" />
-              </span>
-              <span>
-                <span className="block text-xs font-extrabold text-brand-950">حفظ جديد</span>
-                <span className="mt-0.5 block text-[10px] leading-4 text-muted">
-                  أبيات أو صفحات بدأت بحفظها
-                </span>
-              </span>
-            </button>
-
-            <button
-              type="button"
-              aria-pressed={category === "weak"}
-              onClick={() => setCategory("weak")}
-              className={cn(
-                "flex items-start gap-2.5 rounded-2xl border p-3 text-right transition",
-                category === "weak"
-                  ? "border-gold-400 bg-gold-100 shadow-[0_0_0_3px_rgba(201,162,39,0.1)]"
-                  : "border-line bg-white hover:border-gold-200",
-              )}
-            >
-              <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gold-100 text-gold-700">
-                <ShieldAlert className="h-4 w-4" />
-              </span>
-              <span>
-                <span className="block text-xs font-extrabold text-brand-950">مراجعة غير مثبتة</span>
-                <span className="mt-0.5 block text-[10px] leading-4 text-muted">
-                  محفوظ يحتاج تثبيتاً ومتابعة
-                </span>
-              </span>
-            </button>
+            {strengthLevels.map((level) => {
+              const profile = strengthProfiles[level];
+              const active = strength === level;
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => {
+                    setStrength(level);
+                    setFormError(null);
+                  }}
+                  className={cn(
+                    "rounded-2xl border p-3 text-right transition",
+                    active
+                      ? "border-brand-300 bg-brand-50 shadow-[0_0_0_3px_rgba(31,132,100,0.08)]"
+                      : "border-line bg-white hover:border-brand-100",
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={cn("h-2.5 w-2.5 rounded-full", profile.dotClass)} />
+                    <span className="text-xs font-extrabold text-brand-950">{profile.label}</span>
+                    {active ? (
+                      <span
+                        className={cn(
+                          "mr-auto rounded-full px-1.5 py-0.5 text-[8px] font-extrabold",
+                          profile.badgeClass,
+                        )}
+                      >
+                        مختارة
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-[9px] font-semibold leading-4 text-muted">
+                    {profile.description}
+                  </p>
+                  <p className="mt-1 text-[9px] font-bold text-brand-700">
+                    الاستحقاق {formatInterval(profile.interval)} • سهولة {toArabicDigits(profile.easeFactor)}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         </section>
 
@@ -325,7 +348,13 @@ export function AddUnitModal({ open, onClose, onAdded }: AddUnitModalProps) {
                   {toArabicDigits(selectedSurah.numberOfAyahs)} آية
                 </span>
                 <span className="rounded-full border border-line bg-cream-100 px-2 py-1">
-                  {selectedSurah.revelationType === "Meccan" ? "مكية" : "مدنية"}
+                  {toArabicDigits(selectedSurah.pageCount)} صفحة
+                </span>
+                <span className="rounded-full border border-line bg-cream-100 px-2 py-1">
+                  الجزء {toArabicDigits(selectedSurah.juzStart)}
+                  {selectedSurah.juzEnd !== selectedSurah.juzStart
+                    ? `–${toArabicDigits(selectedSurah.juzEnd)}`
+                    : ""}
                 </span>
                 <span className="truncate">{selectedSurah.englishName}</span>
               </div>
@@ -437,8 +466,8 @@ export function AddUnitModal({ open, onClose, onAdded }: AddUnitModalProps) {
           <p className="text-[10px] font-extrabold tracking-wide text-gold-700">سيتم إضافة</p>
           <p className="mt-1 text-balance text-sm font-extrabold text-brand-950">{previewTitle}</p>
           <p className="mt-1 text-[11px] font-semibold text-muted">
-            {unitTypeLabels[type]} • {category === "new" ? "حفظ جديد" : "مراجعة غير مثبتة"} • أول
-            مراجعة اليوم
+            {unitTypeLabels[type]} • درجة {strengthProfiles[strength].label} • أول استحقاق{" "}
+            {formatInterval(strengthProfiles[strength].interval)}
           </p>
         </section>
       </form>

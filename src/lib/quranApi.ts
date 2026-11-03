@@ -1,6 +1,7 @@
 import type {
   ContentGroup,
   DisplayAyah,
+  JuzData,
   MemorizationUnit,
   PageData,
   ReviewContent,
@@ -45,6 +46,25 @@ export async function getSurah(surahNumber: number): Promise<SurahData> {
     throw new Error("رقم السورة غير صالح.");
   }
   return fetchJson<SurahData>(`/surahs/${surahNumber}.json`);
+}
+
+export async function getJuzs(): Promise<JuzData[]> {
+  const juzs = await fetchJson<JuzData[]>("/juzs.json");
+  return [...juzs].sort((first, second) => first.number - second.number);
+}
+
+export async function getAyahRangePageCount(
+  surahNumber: number,
+  startAyah: number,
+  endAyah: number,
+): Promise<number> {
+  const surah = await getSurah(surahNumber);
+  const pages = new Set(
+    surah.ayahs
+      .filter((ayah) => ayah.numberInSurah >= startAyah && ayah.numberInSurah <= endAyah)
+      .map((ayah) => ayah.page),
+  );
+  return Math.max(1, pages.size);
 }
 
 export async function getPage(pageNumber: number): Promise<PageData> {

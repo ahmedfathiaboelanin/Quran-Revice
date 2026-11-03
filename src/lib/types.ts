@@ -2,6 +2,10 @@ export type UnitType = "surah" | "ayah_range" | "page";
 
 export type UnitCategory = "new" | "weak";
 
+export type StrengthLevel = "weak" | "medium" | "good" | "strong";
+
+export type WirdCapacityMode = "pages" | "units";
+
 export type ReviewQuality = 1 | 3 | 4 | 5;
 
 export interface UnitReference {
@@ -19,6 +23,8 @@ export interface MemorizationUnit {
   type: UnitType;
   reference: UnitReference;
   category: UnitCategory;
+  strength: StrengthLevel;
+  pageCount: number;
   ayahCount?: number;
   interval: number;
   repetitions: number;
@@ -35,8 +41,26 @@ export interface NewUnitInput {
   title: string;
   type: UnitType;
   reference: UnitReference;
-  category: UnitCategory;
+  strength: StrengthLevel;
+  pageCount: number;
+  category?: UnitCategory;
   ayahCount?: number;
+}
+
+export interface WirdSettings {
+  capacityMode: WirdCapacityMode;
+  dailyPages: number;
+  dailyUnits: number;
+}
+
+export interface DailyWirdSnapshot {
+  date: string;
+  mode: WirdCapacityMode;
+  target: number;
+  selectedIds: string[];
+  deferredIds: string[];
+  selectedPages: number;
+  selectedUnits: number;
 }
 
 export interface SurahMeta {
@@ -46,6 +70,32 @@ export interface SurahMeta {
   englishNameTranslation: string;
   revelationType: string;
   numberOfAyahs: number;
+  juzStart: number;
+  juzEnd: number;
+  startPage: number;
+  endPage: number;
+  pageCount: number;
+}
+
+export interface JuzPortion {
+  juz: number;
+  surah: {
+    number: number;
+    name: string;
+    englishName: string;
+    numberOfAyahs: number;
+  };
+  startAyah: number;
+  endAyah: number;
+  ayahCount: number;
+  startPage: number;
+  endPage: number;
+  pageCount: number;
+}
+
+export interface JuzData {
+  number: number;
+  portions: JuzPortion[];
 }
 
 export interface Ayah {

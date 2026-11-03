@@ -29,6 +29,20 @@ export function isValidDate(value: unknown): value is string {
   return typeof value === "string" && !Number.isNaN(new Date(value).getTime());
 }
 
+export function localDateKey(value: Date | string | number = new Date()): string {
+  const date = new Date(value);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+export function isSameLocalDay(
+  first: Date | string | number,
+  second: Date | string | number = new Date(),
+): boolean {
+  return localDateKey(first) === localDateKey(second);
+}
+
 export function formatLongDate(value: Date | string | number = new Date()): string {
   return new Intl.DateTimeFormat("ar-EG", {
     weekday: "long",

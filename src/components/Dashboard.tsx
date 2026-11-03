@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   BookOpen,
   CalendarClock,
@@ -9,19 +9,22 @@ import {
   Database,
   Download,
   History,
+  Library,
   Loader2,
   Play,
   Plus,
-  Search,
   ShieldAlert,
   Sparkles,
   Upload,
-  X,
 } from "lucide-react";
 import { AddUnitModal } from "@/components/AddUnitModal";
+import { BulkOnboardingModal } from "@/components/BulkOnboardingModal";
+import { DailyWirdProgress } from "@/components/DailyWirdProgress";
 import { Header } from "@/components/Header";
+import { InventoryView } from "@/components/InventoryView";
 import { ReviewSession } from "@/components/ReviewSession";
 import { UnitCard } from "@/components/UnitCard";
+import { WirdSettingsModal } from "@/components/WirdSettingsModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toast } from "@/components/ui/Toast";
 import { useHydrated } from "@/hooks/useHydrated";
@@ -29,12 +32,12 @@ import { useNow } from "@/hooks/useNow";
 import { useToast } from "@/hooks/useToast";
 import { downloadBackup, parseBackup } from "@/lib/backup";
 import { getDueUnits, isWeak } from "@/lib/srsAlgorithm";
+import { strengthProfiles } from "@/lib/strength";
 import { useQuranStore } from "@/lib/store";
-import type { MemorizationUnit } from "@/lib/types";
-import { matchesSearch } from "@/lib/unitDisplay";
-import { cn, formatArabicNumber, formatLongDate, toArabicDigits } from "@/lib/utils";
+import type { MemorizationUnit, StrengthLevel } from "@/lib/types";
+import { cn, formatArabicNumber, formatLongDate, localDateKey, toArabicDigits } from "@/lib/utils";
 
-type DashboardTab = "due" | "weak" | "all";
+type DashboardTab = "due" | "weak" | "inventory";
 
 export default function Dashboard() {
   const hydrated = useHydrated();
@@ -42,11 +45,17 @@ export default function Dashboard() {
   const units = useQuranStore((state) => state.units);
   const removeUnit = useQuranStore((state) => state.removeUnit);
   const importUnits = useQuranStore((state) => state.importUnits);
+  const updateStrength = useQuranStore((state) => state.updateStrength);
+  const wirdSettings = useQuranStore((state) => state.wirdSettings);
+  const lastPlan = useQuranStore((state) => state.lastPlan);
+  const setWirdSettings = useQuranStore((state) => state.setWirdSettings);
+  const rebalanceDailyWird = useQuranStore((state) => state.rebalanceDailyWird);
   const { toast, show, dismiss } = useToast();
 
   const [tab, setTab] = useState<DashboardTab>("due");
-  const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [reviewIds, setReviewIds] = useState<string[] | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MemorizationUnit | null>(null);
   const [importing, setImporting] = useState(false);
@@ -63,24 +72,16 @@ export default function Dashboard() {
         ),
     [units],
   );
-  const allUnits = useMemo(
-    () =>
-      [...units].sort(
-        (first, second) =>
-          new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime(),
-      ),
-    [units],
-  );
   const totalReviews = useMemo(
     () => units.reduce((total, unit) => total + unit.reviewCount, 0),
     [units],
   );
+  const todayKey = localDateKey(now);
 
-  const visibleUnits = useMemo(() => {
-    if (tab === "due") return dueUnits;
-    if (tab === "weak") return weakUnits;
-    return allUnits.filter((unit) => matchesSearch(unit, query));
-  }, [tab, dueUnits, weakUnits, allUnits, query]);
+  useEffect(() => {
+    if (!hydrated) return;
+    rebalanceDailyWird();
+  }, [hydrated, rebalanceDailyWird, todayKey]);
 
   const startReview = (targetUnits: MemorizationUnit[]) => {
     if (targetUnits.length === 0) {
@@ -95,8 +96,33 @@ export default function Dashboard() {
       show("لا توجد أوراد لتصديرها بعد.", "info");
       return;
     }
-    downloadBackup(units);
+    downloadBackup(units, wirdSettings);
     show(`تم تنزيل نسخة احتياطية تضم ${formatArabicNumber(units.length)} ورد.`);
+  };
+
+  const handleStrengthChange = (unit: MemorizationUnit, strength: StrengthLevel) => {
+    updateStrength(unit.id, strength);
+    show(
+      `تم تحديث درجة «${unit.title}» إلى ${strengthProfiles[strength].label}، وأُعيد ضبط موعد استحقاقها.`,
+      "success",
+    );
+  };
+
+  const handleBulkAdded = (result: { added: number; skipped: number }) => {
+    setBulkOpen(false);
+    rebalanceDailyWird(true);
+    const parts = [`تمت إضافة ${toArabicDigits(result.added)} ورد إلى سجل محفوظاتك`];
+    if (result.skipped > 0) {
+      parts.push(`وتُوجّه ${toArabicDigits(result.skipped)} ورد مكرر`);
+    }
+    show(`${parts.join("، ")}.`, result.skipped > 0 ? "info" : "success");
+  };
+
+  const handleSaveSettings = (settings: typeof wirdSettings) => {
+    setWirdSettings(settings);
+    rebalanceDailyWird(true);
+    setSettingsOpen(false);
+    show("تم تحديث إعدادات الورد اليومي وإعادة توزيع المستحق.");
   };
 
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -129,6 +155,10 @@ export default function Dashboard() {
         parts.push(`وتم تجاهل ${toArabicDigits(parsed.skipped)} سجلاً غير صالح`);
       }
 
+      if (parsed.settings) {
+        setWirdSettings(parsed.settings);
+      }
+      rebalanceDailyWird(true);
       show(`${parts.join(" ")}.`, parsed.skipped > 0 ? "info" : "success");
     } catch (error) {
       show(error instanceof Error ? error.message : "تعذر استيراد النسخة الاحتياطية.", "error");
@@ -153,7 +183,7 @@ export default function Dashboard() {
   }> = [
     { id: "due", label: "مراجعات اليوم", count: dueUnits.length, icon: CalendarClock },
     { id: "weak", label: "تحتاج تثبيت", count: weakUnits.length, icon: ShieldAlert },
-    { id: "all", label: "كل المحفوظات", count: units.length, icon: BookOpen },
+    { id: "inventory", label: "سجل محفوظاتي", count: units.length, icon: Library },
   ];
 
   const hasNoUnits = units.length === 0;
@@ -223,6 +253,15 @@ export default function Dashboard() {
           </div>
         </section>
 
+        <DailyWirdProgress
+          units={units}
+          settings={wirdSettings}
+          now={now}
+          lastPlan={lastPlan}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onStartReview={startReview}
+        />
+
         <section className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
             icon={CalendarClock}
@@ -289,29 +328,6 @@ export default function Dashboard() {
             </div>
 
             <div className="flex items-center gap-2">
-              {tab === "all" ? (
-                <div className="relative min-w-0 flex-1 sm:w-64">
-                  <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-                  <input
-                    type="search"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="ابحث في محفوظاتك…"
-                    className="h-11 w-full rounded-xl border border-line bg-white/80 pr-9 pl-9 text-xs font-semibold text-ink shadow-sm outline-none transition placeholder:font-normal placeholder:text-muted/70 focus:border-brand-500 focus:ring-4 focus:ring-brand-100/70"
-                  />
-                  {query ? (
-                    <button
-                      type="button"
-                      onClick={() => setQuery("")}
-                      className="absolute left-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted transition hover:bg-cream-100 hover:text-brand-900"
-                      aria-label="مسح البحث"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-
               {tab === "due" && dueUnits.length > 1 ? (
                 <button
                   type="button"
@@ -325,47 +341,47 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {hasNoUnits ? (
+          {tab === "inventory" ? (
+            <InventoryView
+              units={units}
+              now={now}
+              onReview={(unit) => startReview([unit])}
+              onDelete={setDeleteTarget}
+              onBulkAdd={() => setBulkOpen(true)}
+              onStrengthChange={handleStrengthChange}
+            />
+          ) : hasNoUnits ? (
             <EmptyState
               icon={Sparkles}
               title="ابدأ رحلة حفظك مع كتاب الله"
-              description="أضف ورداً بالسورة أو بنطاق آيات أو بصفحات المصحف. سيتولى التطبيق تذكيرك بمواعيد المراجعة تلقائياً."
+              description="أضف أول ورد جديد، أو استخدم سجل محفوظاتي لإدخال ما حفظته سابقاً بدرجة حفظه الحالية."
               actionLabel="إضافة أول ورد"
               actionIcon={Plus}
               onAction={() => setAddOpen(true)}
             />
-          ) : visibleUnits.length === 0 ? (
+          ) : (tab === "due" ? dueUnits : weakUnits).length === 0 ? (
             tab === "due" ? (
               <EmptyState
                 icon={CheckCircle2}
                 title="أحسنت، لا توجد مراجعات مستحقة اليوم"
-                description="وردك اليومي مكتمل. يمكنك مراجعة أي ورد الآن من قائمة كل المحفوظات، أو إضافة ورد جديد."
-                actionLabel="عرض كل المحفوظات"
-                actionIcon={BookOpen}
-                onAction={() => setTab("all")}
-              />
-            ) : tab === "weak" ? (
-              <EmptyState
-                icon={Sparkles}
-                title="محفوظاتك متماسكة حتى الآن"
-                description="لا توجد أوراد منخفضة القوة أو كثيرة التعثر. استمر على وردك اليومي ليبقى حفظك ثابتاً."
-                actionLabel="عرض كل المحفوظات"
-                actionIcon={BookOpen}
-                onAction={() => setTab("all")}
+                description="وردك اليومي مكتمل. يمكنك مراجعة أي ورد الآن من سجل محفوظاتك، أو سحب ورد إضافي من نصاب الغد."
+                actionLabel="عرض سجل محفوظاتي"
+                actionIcon={Library}
+                onAction={() => setTab("inventory")}
               />
             ) : (
               <EmptyState
-                icon={Search}
-                title="لا توجد نتائج مطابقة"
-                description="جرّب البحث باسم السورة أو بنطاق الآيات أو بكلمة أخرى."
-                actionLabel="مسح البحث"
-                actionIcon={X}
-                onAction={() => setQuery("")}
+                icon={Sparkles}
+                title="محفوظاتك متماسكة حتى الآن"
+                description="لا توجد أوراد بدرجة ضعيف أو متوسط. استمر على وردك اليومي ليبقى حفظك ثابتاً."
+                actionLabel="عرض سجل محفوظاتي"
+                actionIcon={Library}
+                onAction={() => setTab("inventory")}
               />
             )
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
-              {visibleUnits.map((unit) => (
+              {(tab === "due" ? dueUnits : weakUnits).map((unit) => (
                 <UnitCard
                   key={unit.id}
                   unit={unit}
@@ -443,10 +459,28 @@ export default function Dashboard() {
           onClose={() => setAddOpen(false)}
           onAdded={(unit) => {
             setAddOpen(false);
-            show(`تمت إضافة «${unit.title}» إلى وردك.`);
+            rebalanceDailyWird(true);
+            show(
+              `تمت إضافة «${unit.title}» بدرجة ${strengthProfiles[unit.strength].label} إلى وردك.`,
+            );
           }}
         />
       ) : null}
+
+      {bulkOpen ? (
+        <BulkOnboardingModal
+          open
+          onClose={() => setBulkOpen(false)}
+          onAdded={handleBulkAdded}
+        />
+      ) : null}
+
+      <WirdSettingsModal
+        open={settingsOpen}
+        settings={wirdSettings}
+        onClose={() => setSettingsOpen(false)}
+        onSave={handleSaveSettings}
+      />
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
